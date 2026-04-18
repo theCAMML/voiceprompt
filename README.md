@@ -2,22 +2,28 @@
 
 **Free, open-source macOS voice dictation — powered by OpenAI Whisper, runs 100% locally.**
 
-Click the button → speak → click stop → transcript appears in the window and copies to clipboard.
+Click the button → speak → click stop → transcript appears and copies to clipboard automatically.
 
-No subscription. No cloud. No hotkey required. Private by default.
+No subscription. No cloud. No hotkey required (optional). Private by default.
 
 ---
 
 ## Features
 
-- **Live voice meter** — animated bars show your mic input in real time
-- **One-click recording** — big Start/Stop button, no hotkeys or permissions required to get started
-- **Instant transcription** — Whisper `base` model transcribes in under 1 second on Apple Silicon
-- **History panel** — every transcript saved with timestamp; click 📋 Copy to re-grab any entry
-- **Persistent history** — survives restarts (`~/.voiceprompt/history.json`)
+- **Dark HUD UI** — futuristic neon cyan theme with monospace fonts
+- **Live spectrum meter** — 48 center-mirrored bars animate with your voice (blue → cyan → white)
+- **One-click recording** — prominent Start/Stop button, no setup required
+- **Instant transcription** — Whisper `base` transcribes in ~0.5s on Apple Silicon
+- **Microphone selector** — pick any input device (AirPods, external mic, built-in)
+- **Model switcher** — swap between `base / small / medium / large-v3` from the UI
+- **History panel** — every transcript saved with timestamp, persists across restarts
+- **Pin transcripts** — pin important entries so they survive Clear; one-click Clear Pins
+- **Copy All** — concatenate entire history to clipboard in one click
+- **Export** — save full history + pinned to a timestamped `.txt` on your Desktop
+- **Optional hotkey** — enable `⌘⇧Space` toggle from the UI (Accessibility not required by default)
 - **Auto-type** — optionally types directly into the focused app (requires Accessibility permission)
-- **Clipboard fallback** — if auto-type isn't enabled, text goes to clipboard; press ⌘V to paste
-- **Auto-start on login** — LaunchAgent keeps it running in the background
+- **Clipboard fallback** — text always goes to clipboard; press ⌘V to paste
+- **Auto-start on login** — LaunchAgent keeps it running silently in the background
 - **Privacy first** — audio never leaves your Mac
 
 ---
@@ -31,131 +37,79 @@ No subscription. No cloud. No hotkey required. Private by default.
 
 ---
 
-## Quick Install
+## Install
 
 ```bash
 git clone https://github.com/theCAMML/voiceprompt.git
 cd voiceprompt
-chmod +x install.sh
-./install.sh
+bash install.sh
 ```
 
-The installer will:
-1. Check for Python 3.10+
-2. Create a virtual environment (`.venv/`)
-3. Install all dependencies
-4. Download the Whisper base model (~140 MB, one-time)
-5. Set up `~/.voiceprompt/` with config and history
-6. Install and load the LaunchAgent (auto-start on login)
-
-VoicePrompt will launch automatically when the installer finishes.
+`install.sh` will:
+1. Create a Python venv and install dependencies
+2. Download the Whisper `base` model
+3. Install the LaunchAgent so VoicePrompt starts on login
 
 ---
 
 ## Usage
 
-1. The VoicePrompt window floats above other apps
-2. Click **⏺ Start Recording** and speak
-3. Click **⏹ Stop Recording** when done
-4. Transcript appears in the **Latest** box and is copied to clipboard
-5. Press **⌘V** in any app to paste
-6. Every recording is saved in the **History** panel — click **📋 Copy** to re-grab any entry
+VoicePrompt runs as a floating window (always on top).
+
+| Action | How |
+|---|---|
+| Record | Click **⏺ START RECORDING** |
+| Stop | Click **⏹ STOP RECORDING** |
+| Paste result | Press **⌘V** anywhere |
+| Copy latest again | Click **COPY** next to Latest Output |
+| Pin a transcript | Click **PIN** next to Latest Output |
+| Clear all pins | Click **CLEAR PINS** in the Pinned section |
+| Copy everything | Click **COPY ALL** |
+| Export history | Click **EXPORT** → opens `.txt` on Desktop |
+| Clear history | Click **CLEAR** |
+| Change mic | Use the **MIC** dropdown |
+| Change model | Use the **MODEL** dropdown |
+| Enable hotkey | Check **⌘⇧Space hotkey** (needs Accessibility) |
 
 ---
 
-## Configuration
+## Config
 
-Edit `~/.voiceprompt/config.json`:
-
-```json
-{
-  "whisper_model": "base",
-  "auto_type":     true,
-  "sample_rate":   16000,
-  "channels":      1,
-  "chunk_size":    1024
-}
-```
-
-### Model options
-
-| Model | Size | Speed | Best for |
-|-------|------|-------|----------|
-| `base` | ~140 MB | ~0.5s | Most users ✓ |
-| `small` | ~244 MB | ~1s | Better accuracy |
-| `medium` | ~1.5 GB | ~2s | High accuracy |
-| `large-v3` | ~3 GB | ~5s | Maximum accuracy |
-
-Change `whisper_model` in config and restart VoicePrompt.
+Settings are saved automatically to `~/.voiceprompt/config.json`.  
+Logs: `~/.voiceprompt/voiceprompt.log`  
+History: `~/.voiceprompt/history.json`  
+Pinned: `~/.voiceprompt/pinned.json`
 
 ---
 
-## Auto-Type (Optional)
+## Whisper Models
 
-VoicePrompt can type directly into any app instead of just copying to clipboard.
+| Model | Speed | Accuracy | RAM |
+|---|---|---|---|
+| base | ~0.5s ⚡ | Good | ~150MB |
+| small | ~1s | Better | ~500MB |
+| medium | ~2-3s | Great | ~1.5GB |
+| large-v3 | ~5-8s | Best | ~3GB |
 
-1. Open **System Settings → Privacy & Security → Accessibility**
-2. Click **+** and add the Python binary: `~/Projects/voiceprompt/.venv/bin/python3`
-3. Toggle it **ON**
-
-Without this, VoicePrompt uses clipboard + ⌘V (works great, just one extra keypress).
+`base` is the default and recommended for real-time dictation on Apple Silicon.
 
 ---
 
-## Troubleshooting
+## Uninstall
 
-**Window doesn't appear**
-- Check it's running: `launchctl list | grep voiceprompt`
-- Check logs: `~/.voiceprompt/voiceprompt.log`
-
-**Mic not working / no meter movement**
-- Grant microphone permission: System Settings → Privacy & Security → Microphone → add Terminal or Python
-
-**Transcription is slow**
-- Switch to `base` model in config (fastest, recommended for most use)
-- Subsequent recordings are faster after first warm-up
-
-**pyaudio install fails**
 ```bash
-brew install portaudio
-.venv/bin/pip install pyaudio
+launchctl unload ~/Library/LaunchAgents/com.voiceprompt.app.plist
+rm ~/Library/LaunchAgents/com.voiceprompt.app.plist
+rm -rf ~/Projects/voiceprompt/.venv
+rm -rf ~/.voiceprompt
 ```
-
-**Reload after config change**
-```bash
-launchctl unload ~/Library/LaunchAgents/com.tars.voiceprompt.plist
-launchctl load   ~/Library/LaunchAgents/com.tars.voiceprompt.plist
-```
-
-**Manual start (no LaunchAgent)**
-```bash
-cd ~/Projects/voiceprompt
-.venv/bin/python3 voiceprompt.py
-```
-
----
-
-## Privacy
-
-- All audio processing happens on your Mac
-- No data is sent anywhere
-- No telemetry, no accounts, no cloud
-- History stored locally in `~/.voiceprompt/history.json`
-
----
-
-## Credits
-
-- [OpenAI Whisper](https://github.com/openai/whisper) — local speech recognition
-- [PyAudio](https://people.csail.mit.edu/hubert/pyaudio/) — microphone capture
-- [PyObjC / AppKit](https://pyobjc.readthedocs.io/) — native macOS UI
 
 ---
 
 ## License
 
-MIT — free to use, fork, and share.
+MIT — free to use, modify, and share.
 
 ---
 
-*Built by theCAMML. Inspired by Monologue.*
+*Built with [OpenAI Whisper](https://github.com/openai/whisper) + [PyObjC](https://pyobjc.readthedocs.io/)*
