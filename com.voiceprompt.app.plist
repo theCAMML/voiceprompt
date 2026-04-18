@@ -9,8 +9,8 @@
   The placeholders below are replaced at install time.
   
   To manually reload:
-    launchctl unload ~/Library/LaunchAgents/com.tars.voiceprompt.plist
-    launchctl load   ~/Library/LaunchAgents/com.tars.voiceprompt.plist
+    launchctl unload ~/Library/LaunchAgents/com.voiceprompt.app.plist
+    launchctl load   ~/Library/LaunchAgents/com.voiceprompt.app.plist
   
   To check status:
     launchctl list | grep voiceprompt
@@ -22,7 +22,7 @@
 <dict>
     <!-- Unique identifier for this agent -->
     <key>Label</key>
-    <string>com.tars.voiceprompt</string>
+    <string>com.voiceprompt.app</string>
 
     <!-- Python binary + script path (patched by install.sh) -->
     <key>ProgramArguments</key>

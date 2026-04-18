@@ -1,0 +1,30 @@
+{
+  "auto_type": true,
+  "use_formatting": true,
+  "api_key": "",
+  "custom_vocab": [
+    "TARS",
+    "Jarvis",
+    "CAMMLbot",
+    "Artemis",
+    "OpenClaw",
+    "Tailscale",
+    "openclaw.json",
+    "BRIEFING.md",
+    "agent-lounge",
+    "coordination-hub",
+    "fleet-patterns",
+    "Claude",
+    "Sonnet",
+    "Haiku",
+    "PoI gate",
+    "AgentShield",
+    "verify-monitor",
+    "Graphify",
+    "LightRAG"
+  ],
+  "whisper_model": "large-v3",
+  "sample_rate": 16000,
+  "channels": 1,
+  "chunk_size": 1024
+}

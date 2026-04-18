@@ -9,7 +9,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VP_DIR="$HOME/.voiceprompt"
 LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
-PLIST_NAME="com.tars.voiceprompt.plist"
+PLIST_NAME="com.voiceprompt.app.plist"
 PLIST_DST="$LAUNCH_AGENTS/$PLIST_NAME"
 
 RED='\033[0;31m'; GRN='\033[0;32m'; YLW='\033[1;33m'
@@ -114,7 +114,7 @@ cat > "$PLIST_DST" << EOPLIST
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.tars.voiceprompt</string>
+    <string>com.voiceprompt.app</string>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
@@ -160,7 +160,7 @@ banner "Starting VoicePrompt…"
 launchctl load "$PLIST_DST"
 sleep 2
 
-if launchctl list | grep -q "com.tars.voiceprompt"; then
+if launchctl list | grep -q "com.voiceprompt.app"; then
     ok "VoicePrompt is running"
 else
     warn "LaunchAgent may not have started — check $VP_DIR/launchagent-err.log"
