@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  VoicePrompt LaunchAgent
+  ─────────────────────────────────────────────────────────────────────────────
+  NOTE: install.sh patches this file with correct absolute paths before loading.
+  The placeholders below are replaced at install time.
+  
+  To manually reload:
+    launchctl unload ~/Library/LaunchAgents/com.tars.voiceprompt.plist
+    launchctl load   ~/Library/LaunchAgents/com.tars.voiceprompt.plist
+  
+  To check status:
+    launchctl list | grep voiceprompt
+  
+  Logs:
+    ~/.voiceprompt/launchagent.log
+    ~/.voiceprompt/launchagent-err.log
+-->
+<dict>
+    <!-- Unique identifier for this agent -->
+    <key>Label</key>
+    <string>com.tars.voiceprompt</string>
+
+    <!-- Python binary + script path (patched by install.sh) -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PYTHON_BIN__</string>
+        <string>__SCRIPT_PATH__</string>
+    </array>
+
+    <!-- Auto-launch on login -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart if the process exits abnormally -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Prevent restart storms (seconds between attempts) -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- Stdout log -->
+    <key>StandardOutPath</key>
+    <string>__HOME__/.voiceprompt/launchagent.log</string>
+
+    <!-- Stderr log -->
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.voiceprompt/launchagent-err.log</string>
+
+    <!-- Environment -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <key>HOME</key>
+        <string>__HOME__</string>
+    </dict>
+</dict>
+</plist>
