@@ -444,7 +444,8 @@ def build_window(mics, cfg):
     y -= 20
     lbl(cv, PAD, y, 60, 14, "PINNED",
         size=9, color=C_CYAN, use_mono=True)
-    sep(cv, PAD+56, y+6, IW-56)
+    btn_clear_pins = btn(cv, W-PAD-90, y-2, 90, 20, "CLEAR PINS", size=10)
+    sep(cv, PAD+56, y+6, IW-56-96)
 
     PINNED_H = 44
     y -= PINNED_H + 4
@@ -473,7 +474,8 @@ def build_window(mics, cfg):
             latest_tv, btn_copy_latest, btn_pin,
             btn_copyall, btn_export, btn_clear,
             hist_tv, pinned_tv,
-            mic_popup, model_popup, chk_hotkey, mics)
+            mic_popup, model_popup, chk_hotkey, mics,
+            btn_clear_pins)
 
 
 # ── Controller ─────────────────────────────────────────────────────────────────
@@ -492,7 +494,7 @@ class VPController(NSObject):
          self._btn_copyall, self._btn_export, self._btn_clear,
          self._hist_tv, self._pinned_tv,
          self._mic_popup, self._model_popup, self._chk_hotkey,
-         _mics) = build_window(self._mics, self._cfg)
+         _mics, self._btn_clear_pins) = build_window(self._mics, self._cfg)
 
         for target, action in [
             (self._btn_rec,          "onRecord:"),
@@ -501,6 +503,7 @@ class VPController(NSObject):
             (self._btn_copyall,      "onCopyAll:"),
             (self._btn_export,       "onExport:"),
             (self._btn_clear,        "onClear:"),
+            (self._btn_clear_pins,   "onClearPins:"),
             (self._mic_popup,        "onMicChange:"),
             (self._model_popup,      "onModelChange:"),
             (self._chk_hotkey,       "onHotkeyToggle:"),
@@ -572,6 +575,13 @@ class VPController(NSObject):
         self._btn_copyall.setEnabled_(False)
         self._btn_export.setEnabled_(False)
         self._hist_tv.setString_("No history yet.")
+
+    def onClearPins_(self, sender):
+        self._pinned = []
+        save_json(PINNED_FILE, [])
+        self._refresh_pinned()
+        ui("status", text="PINS CLEARED", color="amber")
+        self._reset_status_after(2)
 
     def onMicChange_(self, sender):
         idx = self._mic_popup.indexOfSelectedItem()
