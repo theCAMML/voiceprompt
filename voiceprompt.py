@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """
-VoicePrompt v4.0 — Futuristic macOS voice dictation
-- Dark HUD-style UI with neon cyan accents
-- Glowing animated record button
-- Spectrum meter with gradient bars
-- Mic selector, model switcher, hotkey toggle
-- History panel with pin, copy-all, export
+VoicePrompt v4.1 — Futuristic macOS voice dictation
+Dark HUD theme · neon cyan · spectrum meter · full feature set
 """
 
 import os, sys, json, time, queue, signal, logging, tempfile
@@ -60,7 +56,6 @@ def save_config(cfg):
     with open(CONFIG_PATH, "w") as f:
         json.dump(cfg, f, indent=2)
 
-# ── History / Pinned ───────────────────────────────────────────────────────────
 def load_json(path, default):
     if path.exists():
         try:
@@ -111,7 +106,6 @@ def auto_type(text):
         capture_output=True, timeout=10)
     return r.returncode == 0
 
-# ── Mic enumeration ────────────────────────────────────────────────────────────
 def list_mics():
     try:
         import pyaudio
@@ -165,7 +159,7 @@ class AudioRecorder:
             if self.on_level:
                 shorts = struct.unpack(f"{len(data)//2}h", data)
                 rms = math.sqrt(sum(s*s for s in shorts)/len(shorts))/32768
-                self.on_level(min(rms*10, 1.0))
+                self.on_level(min(rms * 10, 1.0))
         return (None, pyaudio.paContinue)
 
     def stop(self):
@@ -210,111 +204,122 @@ _wc_ref = [None]
 def ui(kind, **kw):
     _ui_q.put({"kind": kind, **kw})
 
-# ── Color palette ──────────────────────────────────────────────────────────────
-def rgb(r, g, b, a=1.0):
-    return AppKit.NSColor.colorWithRed_green_blue_alpha_(r, g, b, a)
+# ── Colors ─────────────────────────────────────────────────────────────────────
+def rgba(r, g, b, a=1.0):
+    return AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(r, g, b, a)
 
-# HUD color constants (defined as callables to avoid pre-init issues)
-def col_bg():          return rgb(0.07, 0.07, 0.10)          # near-black
-def col_card():        return rgb(0.10, 0.10, 0.15)          # dark card
-def col_border():      return rgb(0.00, 0.80, 0.90, 0.35)    # cyan border dim
-def col_cyan():        return rgb(0.00, 0.85, 0.95)          # neon cyan
-def col_cyan_dim():    return rgb(0.00, 0.55, 0.65)          # muted cyan
-def col_text():        return rgb(0.85, 0.92, 0.98)          # near-white
-def col_text_dim():    return rgb(0.40, 0.50, 0.60)          # muted
-def col_red():         return rgb(1.00, 0.25, 0.35)          # neon red
-def col_orange():      return rgb(1.00, 0.60, 0.10)          # amber
-def col_green():       return rgb(0.10, 0.95, 0.55)          # neon green
-def col_bar_off():     return rgb(0.12, 0.14, 0.20)          # inactive bar
-def col_bar_low():     return rgb(0.00, 0.40, 0.70)          # low level
-def col_bar_mid():     return rgb(0.00, 0.75, 0.95)          # mid level (cyan)
-def col_bar_peak():    return rgb(0.80, 0.95, 1.00)          # peak (white-cyan)
+# Palette
+C_BG       = rgba(0.06, 0.06, 0.09)        # main background
+C_CARD     = rgba(0.09, 0.10, 0.14)        # card/panel fill
+C_BORDER   = rgba(0.00, 0.80, 0.90, 0.30)  # cyan border dim
+C_CYAN     = rgba(0.00, 0.85, 0.95)        # neon cyan — labels, status ready
+C_CYAN2    = rgba(0.00, 0.55, 0.65)        # muted cyan — sublabels
+C_WHITE    = rgba(0.88, 0.94, 1.00)        # near-white body text
+C_DIM      = rgba(0.35, 0.42, 0.52)        # dim/placeholder text
+C_RED      = rgba(1.00, 0.22, 0.32)        # recording red
+C_AMBER    = rgba(1.00, 0.62, 0.10)        # transcribing amber
+C_GREEN    = rgba(0.08, 0.95, 0.55)        # success green
+C_BAR_OFF  = rgba(0.10, 0.12, 0.18)        # inactive meter bar
+C_SEP      = rgba(0.00, 0.75, 0.88, 0.25)  # separator line
 
-# ── Themed helpers ─────────────────────────────────────────────────────────────
-def mono(size=12):
-    return AppKit.NSFont.fontWithName_size_("SF Mono", size) or \
-           AppKit.NSFont.fontWithName_size_("Menlo", size) or \
-           AppKit.NSFont.monospacedSystemFontOfSize_weight_(size, AppKit.NSFontWeightRegular)
+def mono(size):
+    f = AppKit.NSFont.fontWithName_size_("SF Mono", size)
+    if not f:
+        f = AppKit.NSFont.fontWithName_size_("Menlo", size)
+    if not f:
+        f = AppKit.NSFont.monospacedSystemFontOfSize_weight_(
+            size, AppKit.NSFontWeightRegular)
+    return f
 
-def make_label(parent, frame, text, size=13, bold=False, color=None,
-               align=AppKit.NSTextAlignmentLeft, mono_font=False):
-    lbl = AppKit.NSTextField.alloc().initWithFrame_(frame)
-    lbl.setStringValue_(text)
-    if mono_font:
-        lbl.setFont_(mono(size))
+# ── Widget factories ───────────────────────────────────────────────────────────
+def lbl(parent, x, y, w, h, text, size=12, bold=False,
+        color=None, align=None, use_mono=False):
+    """Make a non-editable label and add to parent."""
+    tf = AppKit.NSTextField.alloc().initWithFrame_(
+        AppKit.NSMakeRect(x, y, w, h))
+    tf.setStringValue_(text)
+    if use_mono:
+        tf.setFont_(mono(size))
     elif bold:
-        lbl.setFont_(AppKit.NSFont.boldSystemFontOfSize_(size))
+        tf.setFont_(AppKit.NSFont.boldSystemFontOfSize_(size))
     else:
-        lbl.setFont_(AppKit.NSFont.systemFontOfSize_(size))
-    lbl.setTextColor_(color if color else col_text())
-    lbl.setAlignment_(align)
-    lbl.setBezeled_(False)
-    lbl.setDrawsBackground_(False)
-    lbl.setEditable_(False)
-    lbl.setSelectable_(False)
-    parent.addSubview_(lbl)
-    return lbl
+        tf.setFont_(AppKit.NSFont.systemFontOfSize_(size))
+    tf.setTextColor_(color if color is not None else C_WHITE)
+    tf.setAlignment_(align if align is not None else AppKit.NSTextAlignmentLeft)
+    tf.setBezeled_(False)
+    tf.setDrawsBackground_(False)
+    tf.setEditable_(False)
+    tf.setSelectable_(False)
+    parent.addSubview_(tf)
+    return tf
 
-def make_scroll_textview(parent, frame, placeholder="", font_size=12,
-                         use_mono=False, bg=None, text_color=None):
-    scroll = AppKit.NSScrollView.alloc().initWithFrame_(frame)
-    scroll.setBorderType_(AppKit.NSNoBorder)
-    scroll.setHasVerticalScroller_(True)
-    scroll.setAutohidesScrollers_(True)
-    scroll.setDrawsBackground_(False)
-    tv = AppKit.NSTextView.alloc().initWithFrame_(
-        AppKit.NSMakeRect(0, 0, frame.size.width, frame.size.height))
-    tv.setEditable_(False)
-    tv.setSelectable_(True)
-    tv.setFont_(mono(font_size) if use_mono else AppKit.NSFont.systemFontOfSize_(font_size))
-    tv.setTextColor_(text_color if text_color else col_text())
-    if bg:
-        tv.setBackgroundColor_(bg)
-    else:
-        tv.setDrawsBackground_(False)
-    if placeholder:
-        tv.setString_(placeholder)
-    scroll.setDocumentView_(tv)
-    parent.addSubview_(scroll)
-    return scroll, tv
-
-def make_card(parent, frame, corner=10):
-    """Dark rounded card with subtle cyan border."""
-    box = AppKit.NSBox.alloc().initWithFrame_(frame)
+def sep(parent, x, y, w):
+    """Thin horizontal separator."""
+    box = AppKit.NSBox.alloc().initWithFrame_(AppKit.NSMakeRect(x, y, w, 1))
     box.setBoxType_(AppKit.NSBoxCustom)
-    box.setFillColor_(col_card())
-    box.setBorderColor_(col_border())
-    box.setBorderWidth_(1.0)
-    box.setCornerRadius_(corner)
+    box.setFillColor_(C_SEP)
+    box.setBorderWidth_(0)
     parent.addSubview_(box)
     return box
 
-def make_hud_button(parent, frame, title, font_size=12, enabled=True, accent=False):
-    """Pill-shaped HUD-style button."""
-    btn = AppKit.NSButton.alloc().initWithFrame_(frame)
-    btn.setTitle_(title)
-    btn.setBezelStyle_(AppKit.NSBezelStyleRounded)
-    if accent:
-        btn.setFont_(AppKit.NSFont.boldSystemFontOfSize_(font_size))
-    else:
-        btn.setFont_(AppKit.NSFont.systemFontOfSize_(font_size))
-    btn.setEnabled_(enabled)
-    parent.addSubview_(btn)
-    return btn
+def card(parent, x, y, w, h, radius=8):
+    """Dark rounded card."""
+    box = AppKit.NSBox.alloc().initWithFrame_(AppKit.NSMakeRect(x, y, w, h))
+    box.setBoxType_(AppKit.NSBoxCustom)
+    box.setFillColor_(C_CARD)
+    box.setBorderColor_(C_BORDER)
+    box.setBorderWidth_(1.0)
+    box.setCornerRadius_(radius)
+    parent.addSubview_(box)
+    return box
 
-def make_separator(parent, frame):
-    """Thin cyan separator line."""
-    sep = AppKit.NSBox.alloc().initWithFrame_(frame)
-    sep.setBoxType_(AppKit.NSBoxCustom)
-    sep.setFillColor_(col_border())
-    sep.setBorderWidth_(0)
-    sep.setCornerRadius_(0)
-    parent.addSubview_(sep)
-    return sep
+def btn(parent, x, y, w, h, title, size=12, enabled=True):
+    """Standard rounded button."""
+    b = AppKit.NSButton.alloc().initWithFrame_(AppKit.NSMakeRect(x, y, w, h))
+    b.setTitle_(title)
+    b.setBezelStyle_(AppKit.NSBezelStyleRounded)
+    b.setFont_(AppKit.NSFont.systemFontOfSize_(size))
+    b.setEnabled_(enabled)
+    parent.addSubview_(b)
+    return b
 
-# ── Window builder ─────────────────────────────────────────────────────────────
+def scrolltv(parent, x, y, w, h, placeholder="", size=12, use_mono=False):
+    """Dark scrollable text view."""
+    sv = AppKit.NSScrollView.alloc().initWithFrame_(AppKit.NSMakeRect(x, y, w, h))
+    sv.setBorderType_(AppKit.NSNoBorder)
+    sv.setHasVerticalScroller_(True)
+    sv.setAutohidesScrollers_(True)
+    sv.setDrawsBackground_(False)
+    tv = AppKit.NSTextView.alloc().initWithFrame_(AppKit.NSMakeRect(0, 0, w, h))
+    tv.setEditable_(False)
+    tv.setSelectable_(True)
+    tv.setDrawsBackground_(False)
+    tv.setFont_(mono(size) if use_mono else AppKit.NSFont.systemFontOfSize_(size))
+    tv.setTextColor_(C_WHITE)
+    if placeholder:
+        tv.setString_(placeholder)
+    sv.setDocumentView_(tv)
+    parent.addSubview_(sv)
+    return sv, tv
+
+def popup(parent, x, y, w, h, items, selected=0, size=11):
+    p = AppKit.NSPopUpButton.alloc().initWithFrame_(AppKit.NSMakeRect(x, y, w, h))
+    for item in items:
+        p.addItemWithTitle_(item)
+    try:
+        p.selectItemAtIndex_(selected)
+    except Exception:
+        pass
+    p.setFont_(AppKit.NSFont.systemFontOfSize_(size))
+    parent.addSubview_(p)
+    return p
+
+# ── Window ─────────────────────────────────────────────────────────────────────
 def build_window(mics, cfg):
-    W, H = 540, 720
+    W, H = 500, 700
+    PAD  = 14   # horizontal padding
+    IW   = W - PAD * 2  # inner width
+
     style = (AppKit.NSWindowStyleMaskTitled |
              AppKit.NSWindowStyleMaskClosable |
              AppKit.NSWindowStyleMaskMiniaturizable |
@@ -323,145 +328,145 @@ def build_window(mics, cfg):
         AppKit.NSMakeRect(0, 0, W, H), style,
         AppKit.NSBackingStoreBuffered, False)
     win.setTitle_("VoicePrompt")
-    win.center()
-    win.setLevel_(AppKit.NSFloatingWindowLevel)
-    win.setMinSize_(AppKit.NSMakeSize(440, 600))
-
-    # Dark window background
-    win.setBackgroundColor_(col_bg())
     win.setTitlebarAppearsTransparent_(True)
     win.setTitleVisibility_(AppKit.NSWindowTitleHidden)
-
+    win.setBackgroundColor_(C_BG)
+    win.center()
+    win.setLevel_(AppKit.NSFloatingWindowLevel)
+    win.setMinSize_(AppKit.NSMakeSize(420, 580))
     cv = win.contentView()
-    PAD = 16
 
-    # ── Title bar area ────────────────────────────────────────────────────────
-    # Logo / title
-    title_lbl = make_label(cv, AppKit.NSMakeRect(PAD+4, H-42, 220, 30),
-                           "⚡ VOICE PROMPT", size=15, bold=True,
-                           color=col_cyan(), mono_font=True)
-    # Version tag
-    make_label(cv, AppKit.NSMakeRect(PAD+4, H-58, 120, 16),
-               "v4.0  ·  Whisper", size=10,
-               color=col_text_dim(), mono_font=True)
+    # ── Layout: cursor starts at top, decrements ──────────────────────────────
+    # y = distance from BOTTOM of window (AppKit is bottom-up)
+    y = H  # start at top
 
-    # Thin separator under title
-    make_separator(cv, AppKit.NSMakeRect(PAD, H-64, W-PAD*2, 1))
+    # ── Header ────────────────────────────────────────────────────────────────
+    y -= 10
+    y -= 22
+    lbl(cv, PAD, y, 200, 22, "⚡  VOICE PROMPT",
+        size=15, bold=True, color=C_CYAN, use_mono=True)
+    lbl(cv, PAD+200, y+4, IW-200, 14, "v4.1  ·  local whisper",
+        size=10, color=C_DIM, use_mono=True,
+        align=AppKit.NSTextAlignmentRight)
 
-    # ── Status line ───────────────────────────────────────────────────────────
-    lbl_status = make_label(cv, AppKit.NSMakeRect(PAD, H-94, W-PAD*2, 22),
-                            "INITIALIZING — loading Whisper…", size=12,
-                            color=col_orange(), mono_font=True,
-                            align=AppKit.NSTextAlignmentCenter)
+    y -= 6
+    sep(cv, PAD, y, IW)
 
-    # ── Record button card ────────────────────────────────────────────────────
-    rec_card = make_card(cv, AppKit.NSMakeRect(PAD, H-158, W-PAD*2, 58), corner=12)
-    btn_rec = make_hud_button(rec_card.contentView() if hasattr(rec_card, 'contentView') else cv,
-                              AppKit.NSMakeRect(W//2-100, H-152, 200, 46),
-                              "⏺   START RECORDING", font_size=14, enabled=False, accent=True)
+    # ── Status ────────────────────────────────────────────────────────────────
+    y -= 26
+    lbl_status = lbl(cv, PAD, y, IW, 20,
+                     "INITIALIZING…",
+                     size=12, color=C_AMBER, use_mono=True,
+                     align=AppKit.NSTextAlignmentCenter)
 
-    # Toolbar: Copy All | Export | Clear (left/right of rec card)
-    btn_copyall = make_hud_button(cv, AppKit.NSMakeRect(PAD,     H-152, 100, 32),
-                                  "COPY ALL", font_size=11, enabled=False)
-    btn_export  = make_hud_button(cv, AppKit.NSMakeRect(PAD+106, H-152, 80,  32),
-                                  "EXPORT",   font_size=11, enabled=False)
-    btn_clear   = make_hud_button(cv, AppKit.NSMakeRect(W-PAD-88,H-152, 88,  32),
-                                  "CLEAR",    font_size=11)
+    y -= 8
+    sep(cv, PAD, y, IW)
 
-    # ── Spectrum meter ────────────────────────────────────────────────────────
-    make_separator(cv, AppKit.NSMakeRect(PAD, H-168, W-PAD*2, 1))
+    # ── Record button + toolbar ───────────────────────────────────────────────
+    # Toolbar row
+    y -= 36
+    btn_copyall = btn(cv, PAD,        y, 92,  28, "COPY ALL",  size=11, enabled=False)
+    btn_export  = btn(cv, PAD+96,     y, 78,  28, "EXPORT",    size=11, enabled=False)
+    btn_clear   = btn(cv, W-PAD-80,   y, 80,  28, "CLEAR",     size=11)
+
+    # Record button — centered, bigger
+    y -= 48
+    btn_rec = btn(cv, W//2-100, y, 200, 40,
+                  "⏺   START RECORDING", size=14, enabled=False)
+
+    y -= 10
+    sep(cv, PAD, y, IW)
+
+    # ── Spectrum meter (center-up bars, like audio visualizer) ───────────────
+    METER_H = 56
+    y -= METER_H + 10
+    meter_y = y  # bottom of meter zone
+    NBARS, BW, GAP = 48, 6, 2
+    total_bar_w = NBARS * (BW + GAP) - GAP
+    bx = (W - total_bar_w) // 2
     bars = []
-    n, bw, gap = 44, 7, 2
-    sx = (W - (n*(bw+gap)-gap)) // 2
-    meter_y = H - 240
-    for i in range(n):
+    for i in range(NBARS):
         bar = AppKit.NSBox.alloc().initWithFrame_(
-            AppKit.NSMakeRect(sx+i*(bw+gap), meter_y, bw, 62))
+            AppKit.NSMakeRect(bx + i*(BW+GAP), meter_y, BW, METER_H))
         bar.setBoxType_(AppKit.NSBoxCustom)
-        bar.setFillColor_(col_bar_off())
+        bar.setFillColor_(C_BAR_OFF)
         bar.setBorderWidth_(0)
         bar.setCornerRadius_(2)
         cv.addSubview_(bar)
         bars.append(bar)
-    make_separator(cv, AppKit.NSMakeRect(PAD, meter_y-8, W-PAD*2, 1))
+
+    y -= 10
+    sep(cv, PAD, y, IW)
 
     # ── Settings row ─────────────────────────────────────────────────────────
-    settings_y = meter_y - 38
-    make_label(cv, AppKit.NSMakeRect(PAD, settings_y+4, 28, 16),
-               "MIC", size=9, color=col_cyan_dim(), mono_font=True)
-    mic_popup = AppKit.NSPopUpButton.alloc().initWithFrame_(
-        AppKit.NSMakeRect(PAD+30, settings_y, 168, 24))
-    mic_popup.addItemWithTitle_("Default Input")
-    for idx, name in mics:
-        mic_popup.addItemWithTitle_(name[:26])
-    mic_popup.setFont_(AppKit.NSFont.systemFontOfSize_(11))
-    cv.addSubview_(mic_popup)
+    y -= 28
+    lbl(cv, PAD,     y+6, 28, 14, "MIC",   size=9, color=C_CYAN2, use_mono=True)
+    mic_items = ["Default"] + [name[:24] for _, name in mics]
+    sel_mic = 0
+    if cfg.get("mic_index") is not None:
+        for j, (idx, _) in enumerate(mics):
+            if idx == cfg["mic_index"]:
+                sel_mic = j + 1
+                break
+    mic_popup = popup(cv, PAD+30, y, 158, 24, mic_items, selected=sel_mic)
 
-    make_label(cv, AppKit.NSMakeRect(PAD+210, settings_y+4, 44, 16),
-               "MODEL", size=9, color=col_cyan_dim(), mono_font=True)
-    model_popup = AppKit.NSPopUpButton.alloc().initWithFrame_(
-        AppKit.NSMakeRect(PAD+258, settings_y, 106, 24))
-    for m in WHISPER_MODELS:
-        model_popup.addItemWithTitle_(m)
-    try:
-        model_popup.selectItemAtIndex_(WHISPER_MODELS.index(cfg["whisper_model"]))
-    except Exception:
-        pass
-    model_popup.setFont_(AppKit.NSFont.systemFontOfSize_(11))
-    cv.addSubview_(model_popup)
+    lbl(cv, PAD+196, y+6, 44, 14, "MODEL",  size=9, color=C_CYAN2, use_mono=True)
+    sel_model = WHISPER_MODELS.index(cfg.get("whisper_model", "base")) \
+                if cfg.get("whisper_model") in WHISPER_MODELS else 0
+    model_popup = popup(cv, PAD+244, y, 102, 24, WHISPER_MODELS, selected=sel_model)
 
     chk_hotkey = AppKit.NSButton.alloc().initWithFrame_(
-        AppKit.NSMakeRect(W-PAD-120, settings_y+2, 120, 20))
+        AppKit.NSMakeRect(W-PAD-118, y+2, 118, 20))
     chk_hotkey.setButtonType_(AppKit.NSButtonTypeSwitch)
-    chk_hotkey.setTitle_("Hotkey  ⌘⇧Space")
+    chk_hotkey.setTitle_("⌘⇧Space hotkey")
     chk_hotkey.setFont_(AppKit.NSFont.systemFontOfSize_(10))
     chk_hotkey.setState_(1 if cfg.get("hotkey_enabled") else 0)
     cv.addSubview_(chk_hotkey)
 
-    make_separator(cv, AppKit.NSMakeRect(PAD, settings_y-12, W-PAD*2, 1))
+    y -= 6
+    sep(cv, PAD, y, IW)
 
     # ── Latest output ─────────────────────────────────────────────────────────
-    latest_y = settings_y - 22
-    make_label(cv, AppKit.NSMakeRect(PAD, latest_y, 80, 14),
-               "LATEST OUTPUT", size=9, color=col_cyan(), mono_font=True)
-    btn_copy_latest = make_hud_button(cv, AppKit.NSMakeRect(W-PAD-140, latest_y-2, 66, 20),
-                                      "COPY", font_size=10, enabled=False)
-    btn_pin = make_hud_button(cv, AppKit.NSMakeRect(W-PAD-68, latest_y-2, 52, 20),
-                              "PIN", font_size=10, enabled=False)
+    y -= 18
+    lbl(cv, PAD, y, 110, 14, "LATEST OUTPUT",
+        size=9, color=C_CYAN, use_mono=True)
+    btn_pin         = btn(cv, W-PAD-56,  y-2, 56, 20, "PIN",  size=10, enabled=False)
+    btn_copy_latest = btn(cv, W-PAD-116, y-2, 56, 20, "COPY", size=10, enabled=False)
 
-    latest_tv_y = latest_y - 72
-    latest_card = make_card(cv, AppKit.NSMakeRect(PAD, latest_tv_y, W-PAD*2, 68), corner=8)
-    _, latest_tv = make_scroll_textview(
-        cv, AppKit.NSMakeRect(PAD+6, latest_tv_y+4, W-PAD*2-12, 60),
-        "—", font_size=13, use_mono=True,
-        bg=col_card(), text_color=col_text())
+    LATEST_H = 60
+    y -= LATEST_H + 4
+    card(cv, PAD, y, IW, LATEST_H)
+    _, latest_tv = scrolltv(cv, PAD+5, y+3, IW-10, LATEST_H-6,
+                            "—", size=13, use_mono=True)
+    latest_tv.setTextColor_(C_WHITE)
 
     # ── Pinned ────────────────────────────────────────────────────────────────
-    pinned_label_y = latest_tv_y - 24
-    make_label(cv, AppKit.NSMakeRect(PAD, pinned_label_y, 80, 14),
-               "PINNED", size=9, color=col_cyan(), mono_font=True)
-    make_separator(cv, AppKit.NSMakeRect(PAD+58, pinned_label_y+6, W-PAD*2-58, 1))
+    y -= 20
+    lbl(cv, PAD, y, 60, 14, "PINNED",
+        size=9, color=C_CYAN, use_mono=True)
+    sep(cv, PAD+56, y+6, IW-56)
 
-    pinned_y = pinned_label_y - 50
-    pinned_card = make_card(cv, AppKit.NSMakeRect(PAD, pinned_y, W-PAD*2, 46), corner=8)
-    _, pinned_tv = make_scroll_textview(
-        cv, AppKit.NSMakeRect(PAD+6, pinned_y+4, W-PAD*2-12, 38),
-        "No pinned items.", font_size=10, use_mono=True,
-        bg=col_card(), text_color=col_text_dim())
+    PINNED_H = 44
+    y -= PINNED_H + 4
+    card(cv, PAD, y, IW, PINNED_H)
+    _, pinned_tv = scrolltv(cv, PAD+5, y+3, IW-10, PINNED_H-6,
+                            "No pinned items.", size=10, use_mono=True)
+    pinned_tv.setTextColor_(C_DIM)
 
     # ── History ───────────────────────────────────────────────────────────────
-    hist_label_y = pinned_y - 24
-    make_label(cv, AppKit.NSMakeRect(PAD, hist_label_y, 80, 14),
-               "HISTORY", size=9, color=col_cyan(), mono_font=True)
-    make_separator(cv, AppKit.NSMakeRect(PAD+62, hist_label_y+6, W-PAD*2-62, 1))
+    y -= 20
+    lbl(cv, PAD, y, 65, 14, "HISTORY",
+        size=9, color=C_CYAN, use_mono=True)
+    sep(cv, PAD+62, y+6, IW-62)
 
-    hist_y = 12
-    hist_h = hist_label_y - 12 - 8
-    hist_card = make_card(cv, AppKit.NSMakeRect(PAD, hist_y, W-PAD*2, hist_h), corner=8)
-    hist_scroll, hist_tv = make_scroll_textview(
-        cv, AppKit.NSMakeRect(PAD+6, hist_y+4, W-PAD*2-12, hist_h-8),
-        "No history yet.", font_size=11, use_mono=True,
-        bg=col_card(), text_color=col_text())
+    # History fills the rest of the window down to bottom margin
+    BOTTOM_PAD = 10
+    hist_h = y - BOTTOM_PAD
+    hist_y  = BOTTOM_PAD
+    card(cv, PAD, hist_y, IW, hist_h)
+    hist_scroll, hist_tv = scrolltv(cv, PAD+5, hist_y+3, IW-10, hist_h-6,
+                                    "No history yet.", size=11, use_mono=True)
+    hist_tv.setTextColor_(C_WHITE)
 
     win.makeKeyAndOrderFront_(None)
     return (win, lbl_status, btn_rec, bars,
@@ -487,26 +492,21 @@ class VPController(NSObject):
          self._btn_copyall, self._btn_export, self._btn_clear,
          self._hist_tv, self._pinned_tv,
          self._mic_popup, self._model_popup, self._chk_hotkey,
-         mics) = build_window(self._mics, self._cfg)
+         _mics) = build_window(self._mics, self._cfg)
 
-        self._btn_rec.setTarget_(self)
-        self._btn_rec.setAction_("onRecord:")
-        self._btn_copy_latest.setTarget_(self)
-        self._btn_copy_latest.setAction_("onCopyLatest:")
-        self._btn_pin.setTarget_(self)
-        self._btn_pin.setAction_("onPin:")
-        self._btn_copyall.setTarget_(self)
-        self._btn_copyall.setAction_("onCopyAll:")
-        self._btn_export.setTarget_(self)
-        self._btn_export.setAction_("onExport:")
-        self._btn_clear.setTarget_(self)
-        self._btn_clear.setAction_("onClear:")
-        self._mic_popup.setTarget_(self)
-        self._mic_popup.setAction_("onMicChange:")
-        self._model_popup.setTarget_(self)
-        self._model_popup.setAction_("onModelChange:")
-        self._chk_hotkey.setTarget_(self)
-        self._chk_hotkey.setAction_("onHotkeyToggle:")
+        for target, action in [
+            (self._btn_rec,          "onRecord:"),
+            (self._btn_copy_latest,  "onCopyLatest:"),
+            (self._btn_pin,          "onPin:"),
+            (self._btn_copyall,      "onCopyAll:"),
+            (self._btn_export,       "onExport:"),
+            (self._btn_clear,        "onClear:"),
+            (self._mic_popup,        "onMicChange:"),
+            (self._model_popup,      "onModelChange:"),
+            (self._chk_hotkey,       "onHotkeyToggle:"),
+        ]:
+            target.setTarget_(self)
+            target.setAction_(action)
 
         self._refresh_history()
         self._refresh_pinned()
@@ -515,14 +515,7 @@ class VPController(NSObject):
             0.05, self, "tick:", None, True)
         return self
 
-    # ── Actions ───────────────────────────────────────────────────────────────
-    @objc.python_method
-    def _flash_status(self, text, delay=2):
-        threading.Thread(target=lambda: (
-            time.sleep(delay),
-            ui("status", text="READY  ·  CLICK TO RECORD", color="cyan")
-        ), daemon=True).start()
-
+    # ── Button actions ────────────────────────────────────────────────────────
     def onRecord_(self, sender):
         if _app_ref["recording"]:
             _app_ref["stop_evt"].set()
@@ -532,8 +525,8 @@ class VPController(NSObject):
     def onCopyLatest_(self, sender):
         if self._history:
             copy_to_clipboard(self._history[-1]["text"])
-            ui("status", text="COPIED TO CLIPBOARD", color="green")
-            self._flash_status("READY  ·  CLICK TO RECORD")
+            ui("status", text="COPIED ✓", color="green")
+            self._reset_status_after(2)
 
     def onPin_(self, sender):
         if self._history:
@@ -542,15 +535,15 @@ class VPController(NSObject):
                 self._pinned.append(entry)
                 save_json(PINNED_FILE, self._pinned)
                 self._refresh_pinned()
-                ui("status", text="PINNED ✓", color="cyan")
-                self._flash_status("READY  ·  CLICK TO RECORD")
+            ui("status", text="PINNED ✓", color="cyan")
+            self._reset_status_after(2)
 
     def onCopyAll_(self, sender):
         if self._history:
             combined = "\n\n".join(e["text"] for e in self._history)
             copy_to_clipboard(combined)
-            ui("status", text=f"ALL {len(self._history)} ENTRIES COPIED", color="green")
-            self._flash_status("READY  ·  CLICK TO RECORD")
+            ui("status", text=f"ALL {len(self._history)} ENTRIES COPIED ✓", color="green")
+            self._reset_status_after(2)
 
     def onExport_(self, sender):
         if not self._history:
@@ -568,7 +561,7 @@ class VPController(NSObject):
         out.write_text("\n".join(lines))
         subprocess.run(["open", str(out)])
         ui("status", text="EXPORTED TO DESKTOP ✓", color="green")
-        self._flash_status("READY  ·  CLICK TO RECORD")
+        self._reset_status_after(2)
 
     def onClear_(self, sender):
         self._history = []
@@ -585,12 +578,11 @@ class VPController(NSObject):
         if idx == 0:
             self._cfg["mic_index"] = None
             _app_ref["recorder"].set_mic(None)
-        else:
-            mic_idx, _ = self._mics[idx-1]
+        elif idx - 1 < len(self._mics):
+            mic_idx, _ = self._mics[idx - 1]
             self._cfg["mic_index"] = mic_idx
             _app_ref["recorder"].set_mic(mic_idx)
         save_config(self._cfg)
-        log.info(f"Mic changed to index {self._cfg['mic_index']}")
 
     def onModelChange_(self, sender):
         model = WHISPER_MODELS[self._model_popup.indexOfSelectedItem()]
@@ -599,7 +591,7 @@ class VPController(NSObject):
         _app_ref["model"][0] = model
         threading.Thread(
             target=lambda: (
-                ui("status", text=f"LOADING {model.upper()}…", color="orange"),
+                ui("status", text=f"LOADING {model.upper()}…", color="amber"),
                 get_whisper_model(model),
                 ui("status", text="READY  ·  CLICK TO RECORD", color="cyan")
             ), daemon=True).start()
@@ -611,17 +603,22 @@ class VPController(NSObject):
         _app_ref["hotkey_enabled"][0] = enabled
         if enabled and not _app_ref["hotkey_running"][0]:
             threading.Thread(target=_app_ref["start_hotkey"], daemon=True).start()
-        log.info(f"Hotkey {'enabled' if enabled else 'disabled'}")
 
-    # ── Refresh helpers ───────────────────────────────────────────────────────
+    # ── Helpers ───────────────────────────────────────────────────────────────
+    @objc.python_method
+    def _reset_status_after(self, seconds):
+        threading.Thread(
+            target=lambda: (time.sleep(seconds),
+                            ui("status", text="READY  ·  CLICK TO RECORD", color="cyan")),
+            daemon=True).start()
+
     @objc.python_method
     def _refresh_history(self):
         if not self._history:
             self._hist_tv.setString_("No history yet.")
             return
-        lines = []
-        for e in reversed(self._history[-50:]):
-            lines.append(f"[{e.get('ts','')}]  {e['text']}")
+        lines = [f"[{e.get('ts','')}]  {e['text']}"
+                 for e in reversed(self._history[-50:])]
         self._hist_tv.setString_("\n\n".join(lines))
         self._hist_tv.scrollToBeginningOfDocument_(None)
 
@@ -629,24 +626,25 @@ class VPController(NSObject):
     def _refresh_pinned(self):
         if not self._pinned:
             self._pinned_tv.setString_("No pinned items.")
+            self._pinned_tv.setTextColor_(C_DIM)
             return
-        lines = [f"[{e.get('ts','')}]  {e['text']}" for e in reversed(self._pinned)]
+        lines = [f"[{e.get('ts','')}]  {e['text']}"
+                 for e in reversed(self._pinned)]
         self._pinned_tv.setString_("\n\n".join(lines))
+        self._pinned_tv.setTextColor_(C_WHITE)
 
     # ── Timer tick ────────────────────────────────────────────────────────────
     def tick_(self, _):
+        # Drain UI queue
         try:
             while True:
                 msg = _ui_q.get_nowait()
                 k = msg["kind"]
                 if k == "status":
                     self._lbl.setStringValue_(msg["text"])
-                    c = {
-                        "red":    col_red(),
-                        "green":  col_green(),
-                        "orange": col_orange(),
-                        "cyan":   col_cyan(),
-                    }.get(msg.get("color"), col_text())
+                    c = {"red": C_RED, "green": C_GREEN,
+                         "amber": C_AMBER, "cyan": C_CYAN
+                         }.get(msg.get("color"), C_WHITE)
                     self._lbl.setTextColor_(c)
                 elif k == "transcript":
                     text = msg["text"]
@@ -668,35 +666,46 @@ class VPController(NSObject):
                 elif k == "ready":
                     self._btn_rec.setEnabled_(True)
                     self._lbl.setStringValue_("READY  ·  CLICK TO RECORD")
-                    self._lbl.setTextColor_(col_cyan())
+                    self._lbl.setTextColor_(C_CYAN)
         except queue.Empty:
             pass
 
-        # Spectrum meter animation
-        n = len(self._bars)
+        # ── Spectrum meter — center-mirrored bars ─────────────────────────────
+        # Bars grow from the vertical center outward, creating a classic
+        # spectrum / equalizer effect. Peak bars flash white-cyan.
+        n   = len(self._bars)
+        mid = n / 2
+        lvl = self._level
+        noise_seed = time.time()
+
         for i, bar in enumerate(self._bars):
-            pos    = i / n                          # 0..1 position
-            thresh = pos                            # bars fill from left
-            noise  = random.uniform(-0.04, 0.04)
-            lvl    = self._level + noise
-            active = lvl > thresh and self._level > 0.02
+            # Distance from center (0=edge, 1=center)
+            dist_from_center = 1.0 - abs(i - mid) / mid
+            # Each bar gets its own threshold — center bars light first
+            thresh = 1.0 - dist_from_center
+            noise  = random.uniform(-0.06, 0.06)
+            active = (lvl + noise) > thresh and lvl > 0.03
 
             if active:
-                # gradient: blue → cyan → white at peak
-                t = min(lvl * 1.5, 1.0)
-                if t < 0.5:
-                    c = rgb(0.0, 0.40 + 0.35*t*2, 0.70 + 0.25*t*2)  # blue→cyan
+                # How "hot" is this bar?
+                heat = min((lvl + noise - thresh) / 0.5, 1.0)
+                if heat < 0.5:
+                    # blue → cyan
+                    t = heat * 2
+                    c = rgba(0.0, 0.35 + 0.50*t, 0.70 + 0.25*t)
                 else:
-                    tt = (t - 0.5) * 2
-                    c  = rgb(tt*0.80, 0.75 + 0.20*tt, 0.95 + 0.05*tt)  # cyan→white
+                    # cyan → white
+                    t = (heat - 0.5) * 2
+                    c = rgba(t*0.85, 0.85 + 0.10*t, 0.95 + 0.05*t)
             else:
-                c = col_bar_off()
+                c = C_BAR_OFF
+
             bar.setFillColor_(c)
 
-        self._level = max(0.0, self._level - 0.035)
+        self._level = max(0.0, lvl - 0.04)
 
 
-# ── Recording logic ────────────────────────────────────────────────────────────
+# ── Recording state ────────────────────────────────────────────────────────────
 _app_ref = {
     "recording":      False,
     "stop_evt":       threading.Event(),
@@ -726,11 +735,11 @@ def make_record_fn(cfg, recorder):
         recorder.on_level = None
         ui("level", v=0.0)
         ui("btn_rec", title="⏺   START RECORDING", enabled=True)
-        ui("status", text="⏳  TRANSCRIBING…", color="orange")
+        ui("status", text="⏳  TRANSCRIBING…", color="amber")
         _app_ref["recording"] = False
 
         if len(wav) < 5000:
-            ui("status", text="TOO SHORT — TRY AGAIN", color="orange")
+            ui("status", text="TOO SHORT — TRY AGAIN", color="amber")
             time.sleep(1.5)
             ui("status", text="READY  ·  CLICK TO RECORD", color="cyan")
             return
@@ -739,7 +748,7 @@ def make_record_fn(cfg, recorder):
             model = _app_ref["model"][0]
             text  = transcribe(wav, model)
             if not text:
-                ui("status", text="NOTHING HEARD — TRY AGAIN", color="orange")
+                ui("status", text="NOTHING HEARD — TRY AGAIN", color="amber")
                 time.sleep(2)
                 ui("status", text="READY  ·  CLICK TO RECORD", color="cyan")
                 return
@@ -749,11 +758,11 @@ def make_record_fn(cfg, recorder):
 
             if cfg.get("auto_type") and has_accessibility():
                 if auto_type(text):
-                    ui("status", text="✓  TYPED INTO APP  ·  HISTORY SAVED", color="green")
+                    ui("status", text="✓  TYPED INTO APP  ·  ⌘V TO PASTE", color="green")
                 else:
-                    ui("status", text="✓  COPIED  ·  PRESS ⌘V  ·  HISTORY SAVED", color="green")
+                    ui("status", text="✓  COPIED  ·  PRESS ⌘V TO PASTE", color="green")
             else:
-                ui("status", text="✓  COPIED  ·  PRESS ⌘V  ·  HISTORY SAVED", color="green")
+                ui("status", text="✓  COPIED  ·  PRESS ⌘V TO PASTE", color="green")
 
             time.sleep(3)
             ui("status", text="READY  ·  CLICK TO RECORD", color="cyan")
@@ -803,7 +812,7 @@ def make_hotkey_fn():
     return start_hotkey
 
 
-# ── Main ───────────────────────────────────────────────────────────────────────
+# ── Entry point ────────────────────────────────────────────────────────────────
 def main():
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     cfg      = load_config()
