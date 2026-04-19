@@ -180,19 +180,30 @@ class AudioRecorder:
             self._pa.terminate(); self._pa = None
 
 def transcribe(wav_bytes, model_name, initial_prompt=""):
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        f.write(wav_bytes); tmp = f.name
-    try:
-        t0 = time.time()
-        kw = dict(language="en", fp16=False)
-        if initial_prompt:
-            kw["initial_prompt"] = initial_prompt
-        result = get_whisper_model(model_name).transcribe(tmp, **kw)
-        text = result["text"].strip()
-        log.info(f"Transcribed in {time.time()-t0:.2f}s: {text!r}")
-        return text
-    finally:
-        os.unlink(tmp)
+    """Bypass ffmpeg entirely — decode WAV with `wave` module and pass numpy array."""
+    import numpy as np
+    t0 = time.time()
+    buf = io.BytesIO(wav_bytes)
+    with wave.open(buf, "rb") as wf:
+        n_frames = wf.getnframes()
+        raw = wf.readframes(n_frames)
+        sr  = wf.getframerate()
+        sw  = wf.getsampwidth()   # bytes per sample
+        ch  = wf.getnchannels()
+    # Convert raw bytes → float32 numpy array in [-1, 1]
+    dtype = {1: np.int8, 2: np.int16, 4: np.int32}.get(sw, np.int16)
+    audio = np.frombuffer(raw, dtype=dtype).astype(np.float32)
+    audio /= float(np.iinfo(dtype).max)
+    # Downmix to mono if stereo
+    if ch > 1:
+        audio = audio.reshape(-1, ch).mean(axis=1)
+    kw = dict(language="en", fp16=False)
+    if initial_prompt:
+        kw["initial_prompt"] = initial_prompt
+    result = get_whisper_model(model_name).transcribe(audio, **kw)
+    text = result["text"].strip()
+    log.info(f"Transcribed in {time.time()-t0:.2f}s: {text!r}")
+    return text
 
 # ── AppKit ─────────────────────────────────────────────────────────────────────
 import AppKit, objc
